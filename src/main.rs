@@ -1,3 +1,7 @@
+// Temporary warning bypass to let me develop the building blocks in peace
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 // Board size (width and height)
 const BOARD_SIZE: u8 = 10;
 
@@ -15,7 +19,7 @@ pub fn pos_from_parts(row: u8, col: u8) -> BoardPos {
 }
 
 // Ship type
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Debug,PartialEq)]
 enum ShipType {
 	Patrol,
 	Destroyer,
@@ -26,6 +30,11 @@ enum ShipType {
 
 // A list of all ship types
 const SHIP_TYPES: [ShipType; 5] = [ShipType::Patrol, ShipType::Destroyer, ShipType::Submarine, ShipType::Battleship, ShipType::Carrier];
+
+// Compute the ID (index into SHIP_TYPES) of the given ship type
+fn stype_id(stype: ShipType) -> u8 {
+	SHIP_TYPES.iter().position(|&t| t == stype).expect("Unknown ship type!!!") as u8
+}
 
 // Decode a ship type from a character describing it
 fn decode_shiptype(desc: u8) -> ShipType {
@@ -133,6 +142,64 @@ fn read_moves() -> Vec<(BoardPos, Option<ShipType>)> {
 	}).collect()
 }
 
+// Apply the effect of a miss on the position lists
+fn process_miss(pos_positions: &mut Vec<Vec<u8>>, pos: BoardPos) {
+	for stype_idx in 0..pos_positions.len() {
+		let plist = &mut pos_positions[stype_idx];
+
+		let mut idx = 0;
+
+		while idx < plist.len() {
+			// Check if the given position overlaps the miss
+			if ship_range(SHIP_TYPES[stype_idx], plist[idx]).contains(&pos) {
+				plist.swap_remove(idx);
+			} else {
+				idx += 1;
+			}
+		}
+	}
+}
+
+// Apply the effect of a hit on the given ship type
+fn process_hit(poslist: &mut Vec<u8>, stype: ShipType, pos: BoardPos) {
+	let mut idx = 0;
+
+	while idx < poslist.len() {
+		// Check if the given position overlaps the hit
+		if ship_range(stype, poslist[idx]).contains(&pos) {
+			// It overlaps, so this position is acceptable
+			idx += 1;
+		} else {
+			// No overlap; remove this position
+			poslist.swap_remove(idx);
+		}
+	}
+}
+
+// Apply the effect of a known move result on the list of possible positions
+fn apply_move(pos_positions: &mut Vec<Vec<u8>>, move_val: (BoardPos, Option<ShipType>)) {
+	// We operate completely differently depending on whether it was a hit or miss
+	match move_val.1 {
+		None => {
+			// It was a miss. Remove BoardPos from all position lists
+			process_miss(pos_positions, move_val.0);
+		},
+		Some(stype) => {
+			// It was a hit. Make sure that the relevant ship type
+			// overlaps the hit position
+			process_hit(&mut pos_positions[stype_id(stype) as usize], stype, move_val.0);
+		},
+	}
+}
+
 fn main() {
-	println!("{:?}", has_overlap(ShipType::Carrier, 71, ShipType::Patrol, 9));
+	// The list of possible moves per ship type
+	let mut pos_positions = SHIP_TYPES.iter().map(|&stype| (0..num_positions(stype)).collect::<Vec<_>>()).collect::<Vec<_>>();
+
+	// Load in the moves file and process the moves
+	for cur_move in read_moves() {
+		apply_move(&mut pos_positions, cur_move);
+	}
+
+	println!("{:?}", pos_positions);
 }
