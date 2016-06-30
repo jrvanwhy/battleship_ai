@@ -3,7 +3,8 @@
 #![allow(unused_variables)]
 
 // Board size (width and height)
-const BOARD_SIZE: u8 = 10;
+//const BOARD_SIZE: u8 = 10;
+const BOARD_SIZE: u8 = 5;
 
 // This represents a board position.
 // The positions are numbered in a row major manner,
@@ -29,7 +30,8 @@ enum ShipType {
 }
 
 // A list of all ship types
-const SHIP_TYPES: [ShipType; 5] = [ShipType::Patrol, ShipType::Destroyer, ShipType::Submarine, ShipType::Battleship, ShipType::Carrier];
+const NUM_SHIP_TYPES: usize = 5;
+const SHIP_TYPES: [ShipType; NUM_SHIP_TYPES] = [ShipType::Patrol, ShipType::Destroyer, ShipType::Submarine, ShipType::Battleship, ShipType::Carrier];
 
 // Compute the ID (index into SHIP_TYPES) of the given ship type
 fn stype_id(stype: ShipType) -> u8 {
@@ -106,11 +108,48 @@ fn ship_range(shiptype: ShipType, pos: u8) -> Vec<u8> {
 }
 
 // Check if the given ship positions overlap
-fn has_overlap(ship1: ShipType, pos1: u8, ship2: ShipType, pos2: u8) -> bool {
+fn calc_has_overlap(ship1: ShipType, pos1: u8, ship2: ShipType, pos2: u8) -> bool {
 	let range1 = ship_range(ship1, pos1);
 	let range2 = ship_range(ship2, pos2);
 
 	range1.iter().any(|p| range2.contains(p))
+}
+
+// Generate the overlap cache
+fn gen_overlap_cache() -> [[Vec<Vec<bool>>; NUM_SHIP_TYPES]; NUM_SHIP_TYPES] {
+	// The variable we will be outputting
+	let mut out = [[Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()],
+	               [Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()],
+	               [Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()],
+	               [Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()],
+	               [Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()]];
+
+	// Go through each ship type combination and fill out the overlap vector
+	for stype1_idx in 0..NUM_SHIP_TYPES {
+		let stype1 = SHIP_TYPES[stype1_idx];
+
+		for stype2_idx in 0..NUM_SHIP_TYPES {
+			let stype2 = SHIP_TYPES[stype2_idx];
+
+			// Resize the vector to be as minimal as possible
+			out[stype1_idx][stype2_idx] = Vec::with_capacity(num_positions(stype1) as usize);
+
+			// Iterate through the first ship positions and push back vectors of overlap solutions
+			for pos1 in 0..num_positions(stype1) {
+				out[stype1_idx][stype2_idx].push((0..num_positions(stype2)).map(|pos2| {
+					calc_has_overlap(stype1, pos1, stype2, pos2)
+				}).collect());
+			}
+		}
+	}
+
+	out
+}
+
+// Fast overlap checker (uses the provided cache)
+#[inline]
+fn has_overlap(ship1: ShipType, pos1: u8, ship2: ShipType, pos2: u8, cache: &[[Vec<Vec<bool>>; NUM_SHIP_TYPES]; NUM_SHIP_TYPES]) -> bool {
+	cache[stype_id(ship1) as usize][stype_id(ship2) as usize][pos1 as usize][pos2 as usize]
 }
 
 // Read in the moves list from the input file
@@ -201,5 +240,6 @@ fn main() {
 		apply_move(&mut pos_positions, cur_move);
 	}
 
-	println!("{:?}", pos_positions);
+	// Generate the ship position overlap cache
+	let olap_cache = gen_overlap_cache();
 }
